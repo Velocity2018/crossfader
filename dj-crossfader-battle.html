@@ -91,6 +91,7 @@
             <h4>⚖️ 4. Match Rules & Physics</h4>
             <label>Match Clock Duration (Seconds):</label> <input type="number" id="cfg-duration" value="90">
             <label>Bit Goal to Auto-Trigger:</label> <input type="number" id="cfg-bit-goal" value="500">
+            <label>Sub/Resub/Gift Count to Auto-Trigger:</label> <input type="number" id="cfg-sub-goal" value="5">
             <label>Fader Move Distance per vote (%):</label> <input type="number" id="cfg-power" value="1.2" step="0.1">
             <label>Gravity Return Speed (%/sec):</label> <input type="number" id="cfg-drift" value="0.6" step="0.1">
         </div>
@@ -110,7 +111,7 @@
         </div>
     </div>
     <script>
-        let position = 50, isEventActive = false, arenaArmed = false, bitHypePool = 0, timeLeft = 0, gameInterval = null, lastCommandTime = 0, twitchClient = null, userCooldowns = {};
+        let position = 50, isEventActive = false, arenaArmed = false, bitHypePool = 0, subHypeCount = 0, timeLeft = 0, gameInterval = null, lastCommandTime = 0, twitchClient = null, userCooldowns = {};
         let pollActive = false, pollPool = [], pollVotes = {}, pollVoters = {}, pollTimer = null, pollTimeLeft = 0;
         const trackBar = document.getElementById('mixer-track-bar');
 
@@ -130,11 +131,11 @@
             resetSystem();
         }
 
-        function resetSystem() { clearInterval(gameInterval); clearInterval(pollTimer); pollActive = false; position = 50; isEventActive = false; arenaArmed = false; bitHypePool = 0; userCooldowns = {}; trackBar.classList.remove('danger-flash'); updateUI(); document.getElementById('win-banner').style.display = 'none'; renderLockedStatus(); hideOverlay(); }
+        function resetSystem() { clearInterval(gameInterval); clearInterval(pollTimer); pollActive = false; position = 50; isEventActive = false; arenaArmed = false; bitHypePool = 0; subHypeCount = 0; userCooldowns = {}; trackBar.classList.remove('danger-flash'); updateUI(); document.getElementById('win-banner').style.display = 'none'; renderLockedStatus(); hideOverlay(); }
         function showOverlay() { document.getElementById('overlay-container').classList.add('ov-active'); }
         function hideOverlay() { document.getElementById('overlay-container').classList.remove('ov-active'); }
         function updateUI() { document.getElementById('bar-left').style.width = position + '%'; document.getElementById('fader-knob').style.left = position + '%'; if (isEventActive && (position >= 85 || position <= 15)) { trackBar.classList.add('danger-flash'); } else { trackBar.classList.remove('danger-flash'); } }
-        function renderLockedStatus() { document.getElementById('status-line').innerHTML = `🔒 Arena Locked. Goal Progress: <span style="color:#ffea00;">${bitHypePool}</span> / ${document.getElementById('cfg-bit-goal').value} Bits to open voting battle!`; }
+        function renderLockedStatus() { document.getElementById('status-line').innerHTML = `🔒 Arena Locked. Bits: <span style="color:#ffea00;">${bitHypePool}</span>/${document.getElementById('cfg-bit-goal').value} &nbsp;|&nbsp; Subs/Gifts: <span style="color:#ffea00;">${subHypeCount}</span>/${document.getElementById('cfg-sub-goal').value}`; }
         function renderArmedStatus() { showOverlay(); document.getElementById('status-line').innerHTML = `🎤 Goal reached! Run your poll, then type <b>!setbattle genre1 genre2</b> in chat to start the battle!`; }
         function armArena() { if (isEventActive || arenaArmed) return; arenaArmed = true; startGenrePoll(); }
 
@@ -300,9 +301,15 @@
                 }
                 else if (tags.bits) { bitHypePool += parseInt(tags.bits); if (bitHypePool >= parseInt(document.getElementById('cfg-bit-goal').value)) armArena(); else renderLockedStatus(); }
             });
-            twitchClient.on('subscription', () => { if(!isEventActive && !arenaArmed) armArena(); });
-            twitchClient.on('resub', () => { if(!isEventActive && !arenaArmed) armArena(); });
-            twitchClient.on('subgift', () => { if(!isEventActive && !arenaArmed) armArena(); });
+            twitchClient.on('subscription', () => { handleSubEvent(); });
+            twitchClient.on('resub', () => { handleSubEvent(); });
+            twitchClient.on('subgift', () => { handleSubEvent(); });
+        }
+
+        function handleSubEvent() {
+            if (isEventActive || arenaArmed) return;
+            subHypeCount++;
+            if (subHypeCount >= parseInt(document.getElementById('cfg-sub-goal').value)) { armArena(); } else { renderLockedStatus(); }
         }
     </script>
 </body>

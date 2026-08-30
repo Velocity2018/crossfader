@@ -19,7 +19,7 @@
         .danger-flash { animation: danger-pulse 0.3s infinite alternate; }
         @keyframes danger-pulse { from { border-color: #2a2a2e; box-shadow: 0 0 5px rgba(255,0,0,0); } to { border-color: #ff0055; box-shadow: 0 0 20px #ff0055; } }
         .labels { width: 80%; display: flex; justify-content: space-between; margin-bottom: 8px; text-transform: uppercase; font-size: 32px; color: #fff; text-shadow: 3px 3px 0px #000, -1px -1px 0px #000; letter-spacing: 1px; }
-        .status-text { font-size: 15px; color: #ccc; margin-top: 10px; text-shadow: 2px 2px 3px #000; font-family: sans-serif; font-weight: bold; letter-spacing: 0.5px; }
+        .status-text { font-size: 15px; color: #ccc; margin-top: 10px; text-shadow: 2px 2px 3px #000; font-family: sans-serif; font-weight: bold; letter-spacing: 0.5px; min-height: 40px; display: flex; align-items: center; justify-content: center; }
         .timer-display { color: #ffea00; font-size: 20px; }
         .win-banner { position: absolute; font-size: 42px; color: #ffea00; text-shadow: 4px 4px 0px #000, -1px -1px 0px #000; display: none; animation: dramatic-pulse 0.3s infinite alternate; z-index: 10; }
         @keyframes dramatic-pulse { from { transform: scale(0.95); } to { transform: scale(1.05); } }
@@ -182,7 +182,7 @@
         function forceStartEvent() { startEvent(); }
 
         function startEvent() {
-            if(isEventActive) return; isEventActive = true; arenaArmed = false; showOverlay(); position = 50; updateUI(); document.getElementById('win-banner').style.display = 'none'; timeLeft = parseInt(document.getElementById('cfg-duration').value); lastCommandTime = Date.now();
+            if(isEventActive) return; clearInterval(pollTimer); pollActive = false; isEventActive = true; arenaArmed = false; showOverlay(); position = 50; updateUI(); document.getElementById('win-banner').style.display = 'none'; timeLeft = parseInt(document.getElementById('cfg-duration').value); lastCommandTime = Date.now();
             gameInterval = setInterval(() => {
                 timeLeft--;
                 if (Date.now() - lastCommandTime > 2000) {

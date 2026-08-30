@@ -191,7 +191,38 @@
             });
 
             twitchClient.on('message', (ch, tags, message, self) => {
-                const msg = message.trim().toLowerCase(), cmdLeft = document.getElementById('cfg-left-cmd').value.toLowerCase(), cmdRight = document.getElementById('cfg-right-cmd').value.toLowerCase();
+                const rawMsg = message.trim();
+                const msg = rawMsg.toLowerCase(), cmdLeft = document.getElementById('cfg-left-cmd').value.toLowerCase(), cmdRight = document.getElementById('cfg-right-cmd').value.toLowerCase();
+
+                // Mod/broadcaster-only: !setbattle GenreName:!cmd GenreName:!cmd (use underscores for spaces in a name)
+                if (msg.startsWith('!setbattle ')) {
+                    const isAuthorized = tags.mod || (tags.badges && tags.badges.broadcaster === '1') || tags.username === channel;
+                    if (isAuthorized && !isEventActive) {
+                        const parts = rawMsg.split(' ').slice(1).filter(p => p.length > 0);
+                        if (parts.length === 2) {
+                            const leftParts = parts[0].split(':');
+                            const rightParts = parts[1].split(':');
+                            if (leftParts.length === 2 && rightParts.length === 2 && leftParts[1].startsWith('!') && rightParts[1].startsWith('!')) {
+                                const leftName = leftParts[0].replace(/_/g, ' ');
+                                const leftCmd = leftParts[1].toLowerCase();
+                                const rightName = rightParts[0].replace(/_/g, ' ');
+                                const rightCmd = rightParts[1].toLowerCase();
+
+                                document.getElementById('cfg-left-name').value = leftName;
+                                document.getElementById('cfg-left-cmd').value = leftCmd;
+                                document.getElementById('cfg-right-name').value = rightName;
+                                document.getElementById('cfg-right-cmd').value = rightCmd;
+                                applySetupChanges();
+
+                                const who = tags['display-name'] || tags.username;
+                                document.getElementById('status-line').innerHTML = `✅ Battle set by ${who}: <b>${leftName}</b> (${leftCmd}) vs <b>${rightName}</b> (${rightCmd})`;
+                                setTimeout(() => { if (!isEventActive) renderLockedStatus(); }, 5000);
+                            }
+                        }
+                    }
+                    return;
+                }
+
                 if (isEventActive) {
                     if (msg === cmdLeft || msg === cmdRight) {
                         const username = tags.username; const currentTime = Date.now();

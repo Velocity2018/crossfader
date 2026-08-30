@@ -7,7 +7,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Anton&family=Permanent+Marker&family=Rubik+Mono+One&display=swap" rel="stylesheet">
     <style>
         body { margin: 0; padding: 0; background: transparent; font-family: 'Arial Black', Impact, sans-serif; overflow: hidden; user-select: none; }
-        #overlay-container { width: 100vw; height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+        #overlay-container { width: 100vw; height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; opacity: 0; transition: opacity 0.5s ease; }
+        #overlay-container.ov-active { opacity: 1; }
         .mixer-track { width: 80%; height: 34px; background: #121214; background-image: linear-gradient(45deg, #1a1a1c 25%, transparent 25%), linear-gradient(-45deg, #1a1a1c 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #1a1a1c 75%), linear-gradient(-45deg, transparent 75%, #1a1a1c 75%); background-size: 8px 8px; border: 4px solid #2a2a2e; border-radius: 8px; position: relative; box-shadow: inset 0 4px 12px #000, 0 8px 20px rgba(0,0,0,0.7); display: flex; align-items: center; }
         .mixer-track::before { content: ''; position: absolute; left: 50%; top: -8px; bottom: -8px; width: 4px; background: #ffea00; z-index: 2; transform: translateX(-50%); box-shadow: 0 0 8px #ffea00; }
         .side-left { height: 100%; width: 50%; background: linear-gradient(90deg, #ff0055, #ff7700); transition: width 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94); }
@@ -100,9 +101,17 @@
             <button onclick="simulateAction('right')" style="background:#0044ff; width:48%; font-size:11px;">Sim Vote Right</button>
             <button onclick="addSimulatedHype(250)" style="background:#ffea00; color:black; width:100%; margin-top:5px;">Simulate +250 Goal Bits</button>
         </div>
+        <div class="section">
+            <h4>🗳️ 6. Genre Vote Pool</h4>
+            <label>Genre Pool (comma separated):</label>
+            <input type="text" id="cfg-genre-pool" value="House, Techno, Trance, Drum & Bass, Dubstep">
+            <label>Poll Duration (Seconds):</label>
+            <input type="number" id="cfg-poll-duration" value="20">
+        </div>
     </div>
     <script>
-        let position = 50, isEventActive = false, bitHypePool = 0, timeLeft = 0, gameInterval = null, lastCommandTime = 0, twitchClient = null, userCooldowns = {};
+        let position = 50, isEventActive = false, arenaArmed = false, bitHypePool = 0, timeLeft = 0, gameInterval = null, lastCommandTime = 0, twitchClient = null, userCooldowns = {};
+        let pollActive = false, pollPool = [], pollVotes = {}, pollVoters = {}, pollTimer = null, pollTimeLeft = 0;
         const trackBar = document.getElementById('mixer-track-bar');
 
         window.onload = function() {
@@ -121,13 +130,51 @@
             resetSystem();
         }
 
-        function resetSystem() { clearInterval(gameInterval); position = 50; isEventActive = false; bitHypePool = 0; userCooldowns = {}; trackBar.classList.remove('danger-flash'); updateUI(); document.getElementById('win-banner').style.display = 'none'; renderLockedStatus(); }
+        function resetSystem() { clearInterval(gameInterval); clearInterval(pollTimer); pollActive = false; position = 50; isEventActive = false; arenaArmed = false; bitHypePool = 0; userCooldowns = {}; trackBar.classList.remove('danger-flash'); updateUI(); document.getElementById('win-banner').style.display = 'none'; renderLockedStatus(); hideOverlay(); }
+        function showOverlay() { document.getElementById('overlay-container').classList.add('ov-active'); }
+        function hideOverlay() { document.getElementById('overlay-container').classList.remove('ov-active'); }
         function updateUI() { document.getElementById('bar-left').style.width = position + '%'; document.getElementById('fader-knob').style.left = position + '%'; if (isEventActive && (position >= 85 || position <= 15)) { trackBar.classList.add('danger-flash'); } else { trackBar.classList.remove('danger-flash'); } }
         function renderLockedStatus() { document.getElementById('status-line').innerHTML = `🔒 Arena Locked. Goal Progress: <span style="color:#ffea00;">${bitHypePool}</span> / ${document.getElementById('cfg-bit-goal').value} Bits to open voting battle!`; }
+        function renderArmedStatus() { showOverlay(); document.getElementById('status-line').innerHTML = `🎤 Goal reached! Run your poll, then type <b>!setbattle genre1 genre2</b> in chat to start the battle!`; }
+        function armArena() { if (isEventActive || arenaArmed) return; arenaArmed = true; startGenrePoll(); }
+
+        function startGenrePoll() {
+            showOverlay();
+            const pool = document.getElementById('cfg-genre-pool').value.split(',').map(s => s.trim()).filter(Boolean);
+            if (pool.length < 2) { renderArmedStatus(); return; }
+            pollPool = pool; pollVotes = {}; pollVoters = {}; pollActive = true;
+            pollTimeLeft = parseInt(document.getElementById('cfg-poll-duration').value) || 20;
+            updatePollStatus();
+            pollTimer = setInterval(() => {
+                pollTimeLeft--;
+                updatePollStatus();
+                if (pollTimeLeft <= 0) { clearInterval(pollTimer); finishGenrePoll(); }
+            }, 1000);
+        }
+
+        function updatePollStatus() {
+            const optionsText = pollPool.map(g => `<b>${g}</b>: ${pollVotes[g.toLowerCase()] || 0}`).join(' &nbsp;|&nbsp; ');
+            document.getElementById('status-line').innerHTML = `🗳️ VOTE for the next battle! Type a genre name in chat! (${pollTimeLeft}s) — ${optionsText}`;
+        }
+
+        function finishGenrePoll() {
+            pollActive = false;
+            const ranked = [...pollPool].sort((a, b) => (pollVotes[b.toLowerCase()] || 0) - (pollVotes[a.toLowerCase()] || 0));
+            const leftName = ranked[0], rightName = ranked[1];
+            const leftCmd = '!' + leftName.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const rightCmd = '!' + rightName.toLowerCase().replace(/[^a-z0-9]/g, '');
+            document.getElementById('cfg-left-name').value = leftName;
+            document.getElementById('cfg-left-cmd').value = leftCmd;
+            document.getElementById('cfg-right-name').value = rightName;
+            document.getElementById('cfg-right-cmd').value = rightCmd;
+            applySetupChanges();
+            startEvent();
+        }
+
         function forceStartEvent() { startEvent(); }
 
         function startEvent() {
-            if(isEventActive) return; isEventActive = true; position = 50; updateUI(); document.getElementById('win-banner').style.display = 'none'; timeLeft = parseInt(document.getElementById('cfg-duration').value); lastCommandTime = Date.now();
+            if(isEventActive) return; isEventActive = true; arenaArmed = false; showOverlay(); position = 50; updateUI(); document.getElementById('win-banner').style.display = 'none'; timeLeft = parseInt(document.getElementById('cfg-duration').value); lastCommandTime = Date.now();
             gameInterval = setInterval(() => {
                 timeLeft--;
                 if (Date.now() - lastCommandTime > 2000) {
@@ -155,10 +202,11 @@
             if(position > 50) winner = `${document.getElementById('lbl-right').innerText} WINS!`;
             document.getElementById('win-banner').innerText = winner; document.getElementById('win-banner').style.display = 'block';
             document.getElementById('status-line').innerText = "Arena closed. Preparing next track round setup.";
+            setTimeout(() => { resetSystem(); }, 8000);
         }
 
         function simulateAction(dir) { if(!isEventActive) startEvent(); shiftFader(dir); }
-        function addSimulatedHype(amount) { if(isEventActive) return; bitHypePool += amount; if (bitHypePool >= parseInt(document.getElementById('cfg-bit-goal').value)) { startEvent(); } else { renderLockedStatus(); } }
+        function addSimulatedHype(amount) { if(isEventActive || arenaArmed) return; bitHypePool += amount; if (bitHypePool >= parseInt(document.getElementById('cfg-bit-goal').value)) { armArena(); } else { renderLockedStatus(); } }
 
         function initTwitch() {
             const channel = document.getElementById('cfg-channel').value.trim().toLowerCase();
@@ -200,6 +248,7 @@
                     if (isAuthorized && !isEventActive) {
                         const parts = rawMsg.split(' ').slice(1).filter(p => p.length > 0);
                         if (parts.length === 2) {
+                            const wasArmed = arenaArmed;
                             const leftName = parts[0].replace(/_/g, ' ');
                             const rightName = parts[1].replace(/_/g, ' ');
                             const leftCmd = '!' + parts[0].toLowerCase().replace(/_/g, '');
@@ -212,8 +261,30 @@
                             applySetupChanges();
 
                             const who = tags['display-name'] || tags.username;
-                            document.getElementById('status-line').innerHTML = `✅ Battle set by ${who}: <b>${leftName}</b> (${leftCmd}) vs <b>${rightName}</b> (${rightCmd})`;
-                            setTimeout(() => { if (!isEventActive) renderLockedStatus(); }, 5000);
+                            if (wasArmed) {
+                                clearInterval(pollTimer); pollActive = false;
+                                startEvent();
+                            } else {
+                                document.getElementById('status-line').innerHTML = `✅ Battle set by ${who}: <b>${leftName}</b> (${leftCmd}) vs <b>${rightName}</b> (${rightCmd})`;
+                                setTimeout(() => { if (!isEventActive && !arenaArmed) renderLockedStatus(); }, 5000);
+                            }
+                        }
+                    }
+                    return;
+                }
+
+                // Genre vote poll: any viewer can vote by typing a pool genre name (one vote per user, changeable)
+                if (pollActive) {
+                    const matchedGenre = pollPool.find(g => g.toLowerCase() === msg);
+                    if (matchedGenre) {
+                        const genreKey = matchedGenre.toLowerCase();
+                        const username = tags.username;
+                        const prevVote = pollVoters[username];
+                        if (prevVote !== genreKey) {
+                            if (prevVote) pollVotes[prevVote] = Math.max(0, (pollVotes[prevVote] || 0) - 1);
+                            pollVoters[username] = genreKey;
+                            pollVotes[genreKey] = (pollVotes[genreKey] || 0) + 1;
+                            updatePollStatus();
                         }
                     }
                     return;
@@ -227,11 +298,11 @@
                         if (msg === cmdLeft) shiftFader('left'); if (msg === cmdRight) shiftFader('right');
                     }
                 }
-                else if (tags.bits) { bitHypePool += parseInt(tags.bits); if (bitHypePool >= parseInt(document.getElementById('cfg-bit-goal').value)) startEvent(); else renderLockedStatus(); }
+                else if (tags.bits) { bitHypePool += parseInt(tags.bits); if (bitHypePool >= parseInt(document.getElementById('cfg-bit-goal').value)) armArena(); else renderLockedStatus(); }
             });
-            twitchClient.on('subscription', () => { if(!isEventActive) startEvent(); });
-            twitchClient.on('resub', () => { if(!isEventActive) startEvent(); });
-            twitchClient.on('subgift', () => { if(!isEventActive) startEvent(); });
+            twitchClient.on('subscription', () => { if(!isEventActive && !arenaArmed) armArena(); });
+            twitchClient.on('resub', () => { if(!isEventActive && !arenaArmed) armArena(); });
+            twitchClient.on('subgift', () => { if(!isEventActive && !arenaArmed) armArena(); });
         }
     </script>
 </body>

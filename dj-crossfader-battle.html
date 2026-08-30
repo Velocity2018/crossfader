@@ -1,1 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Twitch DJ Battle Crossfader Overlay</title>
+    <!-- BYPASS FIX: Removed all external third-party script links to completely avoid Cloudflare blocks -->
+    <link href="https://googleapis.com" rel="stylesheet">
+    <style>
+        body { margin: 0; padding: 0; background: transparent; font-family: 'Arial Black', Impact, sans-serif; overflow: hidden; user-select: none; }
+        #overlay-container { width: 100vw; height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+        .mixer-track { width: 80%; height: 34px; background: #121214; background-image: linear-gradient(45deg, #1a1a1c 25%, transparent 25%), linear-gradient(-45deg, #1a1a1c 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #1a1a1c 75%), linear-gradient(-45deg, transparent 75%, #1a1a1c 75%); background-size: 8px 8px; border: 4px solid #2a2a2e; border-radius: 8px; position: relative; box-shadow: inset 0 4px 12px #000, 0 8px 20px rgba(0,0,0,0.7); display: flex; align-items: center; }
+        .mixer-track::before { content: ''; position: absolute; left: 50%; top: -8px; bottom: -8px; width: 4px; background: #ffea00; z-index: 2; transform: translateX(-50%); box-shadow: 0 0 8px #ffea00; }
+        .side-left { height: 100%; width: 50%; background: linear-gradient(90deg, #ff0055, #ff7700); transition: width 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94); }
+        .side-right { height: 100%; flex-grow: 1; background: linear-gradient(90deg, #00f0ff, #0044ff); }
+        .crossfader-fader { position: absolute; top: -12px; height: 58px; width: 28px; background: linear-gradient(to right, #e6e6e6 0%, #ffffff 30%, #bbbbbb 70%, #888888 100%); border: 2px solid #111; border-radius: 4px; box-shadow: 0 6px 12px rgba(0,0,0,0.9), inset 0 1px 3px #fff; transform: translateX(-50%); z-index: 5; transition: left 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px; }
+        .crossfader-fader::before, .crossfader-fader::after { content: ''; width: 16px; height: 2px; background: #333; box-shadow: 0 1px 0px #fff; }
+        .fader-center-line { width: 100%; height: 3px; background: #000; position: absolute; left: 0; }
+        .danger-flash { animation: danger-pulse 0.3s infinite alternate; }
+        @keyframes danger-pulse { from { border-color: #2a2a2e; box-shadow: 0 0 5px rgba(255,0,0,0); } to { border-color: #ff0055; box-shadow: 0 0 20px #ff0055; } }
+        .labels { width: 80%; display: flex; justify-content: space-between; margin-bottom: 8px; text-transform: uppercase; font-size: 32px; color: #fff; text-shadow: 3px 3px 0px #000, -1px -1px 0px #000; letter-spacing: 1px; }
+        .status-text { font-size: 15px; color: #ccc; margin-top: 10px; text-shadow: 2px 2px 3px #000; font-family: sans-serif; font-weight: bold; letter-spacing: 0.5px; }
+        .timer-display { color: #ffea00; font-size: 20px; }
+        .win-banner { position: absolute; font-size: 42px; color: #ffea00; text-shadow: 4px 4px 0px #000, -1px -1px 0px #000; display: none; animation: dramatic-pulse 0.3s infinite alternate; z-index: 10; }
+        @keyframes dramatic-pulse { from { transform: scale(0.95); } to { transform: scale(1.05); } }
+        
+        #control-panel { 
+            background: #0d0d11; color: white; padding: 25px; font-family: sans-serif; border-top: 4px solid #1a1a22; display: flex; flex-wrap: wrap; gap: 20px; 
+            position: absolute; top: 160px; left: 0; width: calc(100vw - 50px);
+        }
+        .section { background: #16161f; padding: 18px; border-radius: 8px; flex: 1; min-width: 260px; border: 1px solid #222530; }
+        h4 { margin: 0 0 12px 0; color: #00f0ff; text-transform: uppercase; font-size: 13px; letter-spacing: 1px;}
+        label { display: block; margin: 8px 0 3px 0; color: #aaa; font-size: 12px;}
+        input, select { background: #09090c; border: 1px solid #333745; color: white; padding: 6px; border-radius: 4px; width: 92%; }
+        button { padding: 8px 14px; background: #0044ff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 10px; transition: 0.2s; }
+        button:hover { background: #00f0ff; color: black; box-shadow: 0 0 10px #00f0ff; }
+        .color-pickers { display: flex; gap: 10px; }
+        .color-pickers div { flex: 1; }
+    </style>
+</head>
+<body>
+    <div id="overlay-container">
+        <div id="genre-labels" class="labels">
+            <span id="lbl-left" style="color: #ff0055;">House</span>
+            <span id="lbl-right" style="color: #00f0ff;">Drum & Bass</span>
+        </div>
+        <div id="mixer-track-bar" class="mixer-track">
+            <div id="bar-left" class="side-left"></div>
+            <div id="bar-right" class="side-right"></div>
+            <div id="fader-knob" class="crossfader-fader" style="left: 50%;">
+                <div class="fader-center-line"></div>
+            </div>
+        </div>
+        <div id="status-line" class="status-text">🔒 Arena Locked. Goal Progress: <span style="color:#ffea00;">0</span> / 500 Bits to open voting battle!</div>
+        <div id="win-banner" class="win-banner">HOUSE WINS!</div>
+    </div>
 
+    <div id="control-panel">
+        <div class="section">
+            <h4>📡 1. Twitch Channel Link</h4>
+            <label>Twitch Username:</label>
+            <input type="text" id="cfg-channel" value="velocity69dj" placeholder="yourchannelname">
+            <button onclick="initTwitch()">Connect Chat</button>
+            <p style="font-size:12px; margin-top:8px;">Status: <span id="conn-status" style="color:#ff0055; font-weight:bold;">Offline</span></p>
+        </div>
+        <div class="section">
+            <h4>💿 2. Match Profiles</h4>
+            <label>Left Name:</label> <input type="text" id="cfg-left-name" value="House">
+            <label>Left Chat Command:</label> <input type="text" id="cfg-left-cmd" value="!house">
+            <label>Right Name:</label> <input type="text" id="cfg-right-name" value="Drum & Bass">
+            <label>Right Chat Command:</label> <input type="text" id="cfg-right-cmd" value="!dnb">
+            <button onclick="applySetupChanges()">Save Profile Settings</button>
+        </div>
+        <div class="section">
+            <h4>🎨 3. Visual Style Customizer</h4>
+            <div class="color-pickers">
+                <div><label>Left Theme Color:</label><input type="color" id="cfg-color-left" value="#ff0055" style="padding:2px; height:30px;"></div>
+                <div><label>Right Theme Color:</label><input type="color" id="cfg-color-right" value="#00f0ff" style="padding:2px; height:30px;"></div>
+            </div>
+            <label>Display Typography Font:</label>
+            <select id="cfg-font" onchange="applySetupChanges()">
+                <option value="'Arial Black', Impact, sans-serif">Standard Impact</option>
+                <option value="'Orbitron', sans-serif">Futuristic Sci-Fi (Orbitron)</option>
+                <option value="'Anton', sans-serif">Bold Compressed (Anton)</option>
+                <option value="'Permanent Marker', cursive">Street Graffiti (Marker)</option>
+                <option value="'Rubik Mono One', sans-serif">Thick Block Arcade (Rubik)</option>
+            </select>
+            <button onclick="applySetupChanges()" style="background:#a83294;">Apply Colors & Font</button>
+        </div>
+        <div class="section">
+            <h4>⚖️ 4. Match Rules & Physics</h4>
+            <label>Match Clock Duration (Seconds):</label> <input type="number" id="cfg-duration" value="90">
+            <label>Bit Goal to Auto-Trigger:</label> <input type="number" id="cfg-bit-goal" value="500">
+            <label>Fader Move Distance per vote (%):</label> <input type="number" id="cfg-power" value="1.2" step="0.1">
+            <label>Gravity Return Speed (%/sec):</label> <input type="number" id="cfg-drift" value="0.6" step="0.1">
+        </div>
+        <div class="section">
+            <h4>🛠️ 5. Broadcast Sandbox Tool</h4>
+            <button onclick="forceStartEvent()" style="background:#00ff66; color:black; width:100%;">⚡ Force Open Arena</button>
+            <button onclick="simulateAction('left')" style="background:#ff0055; width:48%; font-size:11px;">Sim Vote Left</button>
+            <button onclick="simulateAction('right')" style="background:#0044ff; width:48%; font-size:11px;">Sim Vote Right</button>
+            <button onclick="addSimulatedHype(250)" style="background:#ffea00; color:black; width:100%; margin-top:5px;">Simulate +250 Goal Bits</button>
+        </div>
+    </div>
+    <script>
+        let position = 50, isEventActive = false, bitHypePool = 0, timeLeft = 0, gameInterval = null, lastCommandTime = 0, twitchClient = null, userCooldowns = {};
+        const trackBar = document.getElementById('mixer-track-bar');
+
+        window.onload = function() {
+            applySetupChanges();
+            initTwitch();
+        };
+
+        function applySetupChanges() {
+            document.getElementById('lbl-left').innerText = document.getElementById('cfg-left-name').value;
+            document.getElementById('lbl-right').innerText = document.getElementById('cfg-right-name').value;
+            const leftColor = document.getElementById('cfg-color-left').value, rightColor = document.getElementById('cfg-color-right').value;
+            document.getElementById('bar-left').style.background = `linear-gradient(90deg, ${leftColor}, #111)`;
+            document.getElementById('bar-right').style.background = `linear-gradient(90deg, #111, ${rightColor})`;
+            document.getElementById('lbl-left').style.color = leftColor; document.getElementById('lbl-right').style.color = rightColor;
+            document.getElementById('overlay-container').style.fontFamily = document.getElementById('cfg-font').value;
+            resetSystem();
+        }
+
+        function resetSystem() { clearInterval(gameInterval); position = 50; isEventActive = false; bitHypePool = 0; userCooldowns = {}; trackBar.classList.remove('danger-flash'); updateUI(); document.getElementById('win-banner').style.display = 'none'; renderLockedStatus(); }
+        function updateUI() { document.getElementById('bar-left').style.width = position + '%'; document.getElementById('fader-knob').style.left = position + '%'; if (isEventActive && (position >= 85 || position <= 15)) { trackBar.classList.add('danger-flash'); } else { trackBar.classList.remove('danger-flash'); } }
+        function renderLockedStatus() { document.getElementById('status-line').innerHTML = `🔒 Arena Locked. Goal Progress: <span style="color:#ffea00;">${bitHypePool}</span> / ${document.getElementById('cfg-bit-goal').value} Bits to open voting battle!`; }
+        function forceStartEvent() { startEvent(); }
+
+        function startEvent() {
+            if(isEventActive) return; isEventActive = true; position = 50; updateUI(); document.getElementById('win-banner').style.display = 'none'; timeLeft = parseInt(document.getElementById('cfg-duration').value); lastCommandTime = Date.now();
+            gameInterval = setInterval(() => {
+                timeLeft--;
+                if (Date.now() - lastCommandTime > 2000) {
+                    const driftSpeed = parseFloat(document.getElementById('cfg-drift').value);
+                    if (position > 50) position = Math.max(50, position - driftSpeed);
+                    else if (position < 50) position = Math.min(50, position + driftSpeed);
+                    updateUI();
+                }
+                document.getElementById('status-line').innerHTML = `🔥 BATTLE ACTIVE! Type <span style="font-style:italic;">${document.getElementById('cfg-left-cmd').value}</span> or <span style="font-style:italic;">${document.getElementById('cfg-right-cmd').value}</span>! Time left: <span class="timer-display">${timeLeft}s</span>`;
+                if (timeLeft <= 0) determineWinner();
+            }, 1000);
+        }
+
+        function shiftFader(direction) {
+            if(!isEventActive) return; lastCommandTime = Date.now();
+            position += (direction === 'right' ? 1 : -1) * parseFloat(document.getElementById('cfg-power').value);
+            position = Math.max(0, Math.min(100, position)); updateUI();
+            if(position >= 100 || position <= 0) determineWinner();
+        }
+
+        function determineWinner() {
+            clearInterval(gameInterval); isEventActive = false; trackBar.classList.remove('danger-flash');
+            let winner = "DRAW OVERTIME TIE!";
+            if(position < 50) winner = `${document.getElementById('lbl-left').innerText} WINS!`;
+            if(position > 50) winner = `${document.getElementById('lbl-right').innerText} WINS!`;
+            document.getElementById('win-banner').innerText = winner; document.getElementById('win-banner').style.display = 'block';
+            document.getElementById('status-line').innerText = "Arena closed. Preparing next track round setup.";
+        }
+
+        function simulateAction(dir) { if(!isEventActive) startEvent(); shiftFader(dir); }
+        function addSimulatedHype(amount) { if(isEventActive) return; bitHypePool += amount; if (bitHypePool >= parseInt(document.getElementById('cfg-bit-goal').value)) { startEvent(); } else { renderLockedStatus(); } }
+
+function initTwitch() {
+    const channel = document.getElementById('cfg-channel').value.trim().toLowerCase(); 
+    if(!channel) return;
+    
+    if(twitchClient) { try { twitchClient.disconnect(); } catch(e){} }
+    
+    // 🛡️ UNBLOCKED FIREWALL BYPASS: Switches Twitch from Port 443 over to unsecure Port 80
+    // This allows local hard-drive files to sneak through router blocks and network walls
+    twitchClient = new tmi.Client({
+        options: { secure: false },
+        connection: { 
+            reconnect: true, 
+            secure: false,
+            server: "irc-ws.chat.twitch.tv",
+            port: 80 
+        },
+        channels: [channel]
+    });
+    
+    document.getElementById('conn-status').innerText = "CONNECTING...";
+    document.getElementById('conn-status').style.color = "#ffea00";
+
+    twitchClient.connect().then(() => { 
+        document.getElementById('conn-status').innerText = "LIVE TO " + channel.toUpperCase(); 
+        document.getElementById('conn-status').style.color = "#00ff66"; 
+    }).catch((err) => { 
+        document.getElementById('conn-status').innerText = "PORT BLOCKED"; 
+        document.getElementById('conn-status').style.color = "#ff0055"; 
+        console.error("Twitch connection failed:", err);
+    });
+
+    twitchClient.on('message', (ch, tags, message, self) => {
+        const msg = message.trim().toLowerCase(), cmdLeft = document.getElementById('cfg-left-cmd').value.toLowerCase(), cmdRight = document.getElementById('cfg-right-cmd').value.toLowerCase();
+        if (isEventActive) { 
+            if (msg === cmdLeft || msg === cmdRight) {
+                const username = tags.username; const currentTime = Date.now();
+                if (userCooldowns[username] && (currentTime - userCooldowns[username] < 3000)) return; 
+                userCooldowns[username] = currentTime;
+                if (msg === cmdLeft) shiftFader('left'); if (msg === cmdRight) shiftFader('right'); 
+            }
+        }
+        else if (tags.bits) { bitHypePool += parseInt(tags.bits); if (bitHypePool >= parseInt(document.getElementById('cfg-bit-goal').value)) startEvent(); else renderLockedStatus(); }
+    });
+    twitchClient.on('subscription', () => { if(!isEventActive) startEvent(); });
+    twitchClient.on('resub', () => { if(!isEventActive) startEvent(); });
+    twitchClient.on('subgift', () => { if(!isEventActive) startEvent(); });
+}
+
+    </script>
+</body>
+</html>

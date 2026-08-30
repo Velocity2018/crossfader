@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <title>Twitch DJ Battle Crossfader Overlay</title>
-    <!-- BYPASS FIX: Removed all external third-party script links to completely avoid Cloudflare blocks -->
-    <link href="https://googleapis.com" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/tmi.js@1.8.5/dist/tmi.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Anton&family=Permanent+Marker&family=Rubik+Mono+One&display=swap" rel="stylesheet">
     <style>
         body { margin: 0; padding: 0; background: transparent; font-family: 'Arial Black', Impact, sans-serif; overflow: hidden; user-select: none; }
         #overlay-container { width: 100vw; height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
@@ -22,9 +22,9 @@
         .timer-display { color: #ffea00; font-size: 20px; }
         .win-banner { position: absolute; font-size: 42px; color: #ffea00; text-shadow: 4px 4px 0px #000, -1px -1px 0px #000; display: none; animation: dramatic-pulse 0.3s infinite alternate; z-index: 10; }
         @keyframes dramatic-pulse { from { transform: scale(0.95); } to { transform: scale(1.05); } }
-        
-        #control-panel { 
-            background: #0d0d11; color: white; padding: 25px; font-family: sans-serif; border-top: 4px solid #1a1a22; display: flex; flex-wrap: wrap; gap: 20px; 
+
+        #control-panel {
+            background: #0d0d11; color: white; padding: 25px; font-family: sans-serif; border-top: 4px solid #1a1a22; display: flex; flex-wrap: wrap; gap: 20px;
             position: absolute; top: 160px; left: 0; width: calc(100vw - 50px);
         }
         .section { background: #16161f; padding: 18px; border-radius: 8px; flex: 1; min-width: 260px; border: 1px solid #222530; }
@@ -160,54 +160,52 @@
         function simulateAction(dir) { if(!isEventActive) startEvent(); shiftFader(dir); }
         function addSimulatedHype(amount) { if(isEventActive) return; bitHypePool += amount; if (bitHypePool >= parseInt(document.getElementById('cfg-bit-goal').value)) { startEvent(); } else { renderLockedStatus(); } }
 
-function initTwitch() {
-    const channel = document.getElementById('cfg-channel').value.trim().toLowerCase(); 
-    if(!channel) return;
-    
-    if(twitchClient) { try { twitchClient.disconnect(); } catch(e){} }
-    
-    // 🛡️ UNBLOCKED FIREWALL BYPASS: Switches Twitch from Port 443 over to unsecure Port 80
-    // This allows local hard-drive files to sneak through router blocks and network walls
-    twitchClient = new tmi.Client({
-        options: { secure: false },
-        connection: { 
-            reconnect: true, 
-            secure: false,
-            server: "irc-ws.chat.twitch.tv",
-            port: 80 
-        },
-        channels: [channel]
-    });
-    
-    document.getElementById('conn-status').innerText = "CONNECTING...";
-    document.getElementById('conn-status').style.color = "#ffea00";
+        function initTwitch() {
+            const channel = document.getElementById('cfg-channel').value.trim().toLowerCase();
+            if(!channel) return;
 
-    twitchClient.connect().then(() => { 
-        document.getElementById('conn-status').innerText = "LIVE TO " + channel.toUpperCase(); 
-        document.getElementById('conn-status').style.color = "#00ff66"; 
-    }).catch((err) => { 
-        document.getElementById('conn-status').innerText = "PORT BLOCKED"; 
-        document.getElementById('conn-status').style.color = "#ff0055"; 
-        console.error("Twitch connection failed:", err);
-    });
+            if(twitchClient) { try { twitchClient.disconnect(); } catch(e){} }
 
-    twitchClient.on('message', (ch, tags, message, self) => {
-        const msg = message.trim().toLowerCase(), cmdLeft = document.getElementById('cfg-left-cmd').value.toLowerCase(), cmdRight = document.getElementById('cfg-right-cmd').value.toLowerCase();
-        if (isEventActive) { 
-            if (msg === cmdLeft || msg === cmdRight) {
-                const username = tags.username; const currentTime = Date.now();
-                if (userCooldowns[username] && (currentTime - userCooldowns[username] < 3000)) return; 
-                userCooldowns[username] = currentTime;
-                if (msg === cmdLeft) shiftFader('left'); if (msg === cmdRight) shiftFader('right'); 
+            if (typeof tmi === 'undefined') {
+                document.getElementById('conn-status').innerText = "tmi.js FAILED TO LOAD";
+                document.getElementById('conn-status').style.color = "#ff0055";
+                console.error("tmi.js library did not load - check network access to cdn.jsdelivr.net");
+                return;
             }
-        }
-        else if (tags.bits) { bitHypePool += parseInt(tags.bits); if (bitHypePool >= parseInt(document.getElementById('cfg-bit-goal').value)) startEvent(); else renderLockedStatus(); }
-    });
-    twitchClient.on('subscription', () => { if(!isEventActive) startEvent(); });
-    twitchClient.on('resub', () => { if(!isEventActive) startEvent(); });
-    twitchClient.on('subgift', () => { if(!isEventActive) startEvent(); });
-}
 
+            document.getElementById('conn-status').innerText = "CONNECTING...";
+            document.getElementById('conn-status').style.color = "#ffea00";
+
+            twitchClient = new tmi.Client({
+                connection: { reconnect: true, secure: true },
+                channels: [channel]
+            });
+
+            twitchClient.connect().then(() => {
+                document.getElementById('conn-status').innerText = "LIVE TO " + channel.toUpperCase();
+                document.getElementById('conn-status').style.color = "#00ff66";
+            }).catch((err) => {
+                document.getElementById('conn-status').innerText = "CONNECTION FAILED";
+                document.getElementById('conn-status').style.color = "#ff0055";
+                console.error("Twitch connection failed:", err);
+            });
+
+            twitchClient.on('message', (ch, tags, message, self) => {
+                const msg = message.trim().toLowerCase(), cmdLeft = document.getElementById('cfg-left-cmd').value.toLowerCase(), cmdRight = document.getElementById('cfg-right-cmd').value.toLowerCase();
+                if (isEventActive) {
+                    if (msg === cmdLeft || msg === cmdRight) {
+                        const username = tags.username; const currentTime = Date.now();
+                        if (userCooldowns[username] && (currentTime - userCooldowns[username] < 3000)) return;
+                        userCooldowns[username] = currentTime;
+                        if (msg === cmdLeft) shiftFader('left'); if (msg === cmdRight) shiftFader('right');
+                    }
+                }
+                else if (tags.bits) { bitHypePool += parseInt(tags.bits); if (bitHypePool >= parseInt(document.getElementById('cfg-bit-goal').value)) startEvent(); else renderLockedStatus(); }
+            });
+            twitchClient.on('subscription', () => { if(!isEventActive) startEvent(); });
+            twitchClient.on('resub', () => { if(!isEventActive) startEvent(); });
+            twitchClient.on('subgift', () => { if(!isEventActive) startEvent(); });
+        }
     </script>
 </body>
 </html>
